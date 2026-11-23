@@ -1,0 +1,73 @@
+<!--
+cartpole.xml : MuJoCo model of the cart-pole (method step 4).
+
+Must match the hand model exactly:
+  cart of mass M on a frictionless horizontal rail (slide joint along x),
+  massless rod of length l, point mass m at the tip,
+  theta = 0 upright, positive theta moves the bob toward +x.
+Fill in every TODO. MuJoCo uses SI units and z is "up".
+-->
+<mujoco model="cartpole">
+
+  <!-- Physics settings.
+       timestep  : integration step [s]
+       integrator: RK4 (same family as solve_ivp's RK45) so the comparison is fair.
+                   MuJoCo's default is a semi-implicit Euler, which drifts more.
+       gravity   : pointing down along -z [m/s^2] -->
+  <option timestep="0.001" integrator="RK4" gravity="0 0 -9.81">
+    <!-- No collisions: the hand model has none. Joint damping, friction
+         and armature are zero by default, so nothing else to turn off. -->
+    <flag contact="disable"/>
+  </option>
+
+  <worldbody>
+    <!-- Light and floor are for looking only. Contacts are off, so they never touch anything. -->
+    <light pos="0 -3 3" dir="0 1 -1"/>
+    <geom name="floor" type="plane" size="5 1 0.1" pos="0 0 -0.7" rgba="0.85 0.85 0.85 1"/>
+    <geom name="rail" type="capsule" fromto="-5 0 0 5 0 0" size="0.008" rgba="0.3 0.3 0.3 1"/>
+
+    <!-- A body's position is given relative to its parent body.
+         The cart's frame sits on the rail at the world origin. -->
+    <body name="cart" pos="0 0 0">
+
+      <!-- Slide joint: the cart may only translate along the world x axis.
+           Its joint position (qpos) is your x. -->
+      <joint name="slider" type="slide" axis="1 0 0"/>
+
+      <!-- Explicit mass properties. If a body has an <inertial> element,
+           MuJoCo ignores the geoms when computing mass, so the box below
+           is visual only. The cart cannot rotate, so its rotational
+           inertia never matters (any small positive number is fine). -->
+      <inertial pos="0 0 0" mass="1" diaginertia="1e-3 1e-3 1e-3"/>
+      <geom name="cart_box" type="box" size="0.12 0.06 0.04" rgba="0.2 0.4 0.8 1"/>
+
+      <!-- The pole is a child body of the cart, so it moves with the cart.
+           Its frame origin is the pivot, on top of the rail. -->
+      <body name="pole" pos="0 0 0">
+
+        <!-- Hinge joint at the pivot. Its qpos is your theta.
+             TODO: choose the rotation axis (a unit vector) so that a POSITIVE
+             angle moves the bob from straight up (+z) toward +x.
+             Use the right-hand rule: thumb along the axis, fingers curl
+             in the positive direction. -->
+        <joint name="hinge" type="hinge" pos="0 0 0" axis="0 1 0"/>
+
+        <!-- Point mass m at distance l above the pivot (pole drawn upright,
+             which is theta = 0). The tiny diaginertia stands in for "point
+             mass": MuJoCo requires it to be positive, and 1e-8 kg m^2 is
+             negligible next to m l^2. -->
+        <inertial pos="0 0 0.5" mass="0.2" diaginertia="1e-8 1e-8 1e-8"/>
+
+        <!-- Visual only (the inertial above sets the mass). -->
+        <geom name="rod" type="capsule" fromto="0 0 0 0 0 0.5" size="0.008" rgba="0.9 0.6 0.2 1"/>
+        <geom name="bob" type="sphere" pos="0 0 0.5" size="0.03" rgba="0.8 0.2 0.2 1"/>
+      </body>
+    </body>
+  </worldbody>
+
+  <!-- Actuator: the force F on the cart. Force = gear * ctrl, so with gear = 1
+       setting data.ctrl[0] = F applies exactly F newtons along the slider. -->
+  <actuator>
+    <motor name="push" joint="slider" gear="1"/>
+  </actuator>
+</mujoco>
