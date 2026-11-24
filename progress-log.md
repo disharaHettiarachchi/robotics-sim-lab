@@ -204,3 +204,58 @@
 
 **Animation / post status**
 - None yet. Post 1 after 6b part 2.
+
+## Session 6 (2026-11-23, part 1)
+
+**Covered**
+- Moved project folder to D:\Vault\04 Projects\Physics Sims. Rebuilt .venv (venvs store absolute paths). Found the old venv only had PyOpenGL: packages had been installed into global Python. Reinstalled numpy, scipy, sympy, matplotlib, control, mujoco in .venv; requirements.txt to be regenerated in UTF-8 (Out-File -Encoding utf8). Git history and remote moved fine; steps 4 to 6a not yet committed.
+- Quiz: Q2 (wrong-way push sequence) and Q3 (slowest pair -1.40 +/- 0.07i, ~4/1.4 = 2.9 s) correct. Q1 (why gravity gives controllability) wrong twice, then correct as a chain: rod pushes only along itself (near vertical) -> cart cannot push bob sideways -> on a tilted pole the rod carries the weight ~ m g, whose sideways part ~ m g theta is the only sideways force on the bob -> with g = 0 the bob position x + l theta is uncontrollable.
+- LQR experiments (nonlinear model, one change at a time, verified against Claude's runs). Settling = 2% of peak |theta|, last exit from band:
+  baseline Q = diag(1,10,1,1), R = 0.1, s0 = [0,0.1,0,0]: peak F 4.76 N, max x 0.16 m, theta settles 3.73 s
+  Q_thth = 100: 6.12 N, 0.15 m, 3.67 s
+  R = 1: 3.24 N, 0.25 m, 5.26 s
+  s0 = [0.5,0,0,0]: 1.58 N, 0.51 m, 5.20 s (wrong-way push confirmed)
+  Q_xx = 0.001: 4.01 N, 0.26 m, 2.39 s (slowest closed-loop eigenvalue about -0.03, cart still ~0.24 m from home at 6 s)
+  theta0 = 0.3 / 0.6 / 1.0: 14.27 / 28.55 / 47.58 N (= 47.58 * theta0), 0.51 / 1.19 / 2.87 m, 3.77 / 3.90 / 3.90 s
+
+**Mistakes to watch**
+- Ran "R = 1" with R = 0.01 (got 9.99 N). Sanity question missed: more force penalty cannot give more force.
+- Settling metric: first took the first entry into a fixed 0.02 rad band (gave ~0.3 s, the first zero crossing; and 0.00 s when theta starts at 0), then the last sample inside the band. Correct: last sample OUTSIDE a 2%-of-peak band, plus one, with guards for "never left" and "never settled".
+
+**Next (after gym)**
+- Answer: what Q_thth buys and costs; R trade-off; why Q_xx = 0.001 balances faster; why LQR works at 1 rad and what breaks it (sweep theta0 > 1.0, note the force needed).
+- 6b part 2: LQR on MuJoCo + push recovery. Commit steps 4 to 6b. requirements.txt in UTF-8.
+
+## Session 6 (2026-11-23 evening to 2026-11-24 night, part 2)
+
+**Decisions**
+- Started a parallel Python Learn project (python_learn\ subfolder, own log python_learn\python-log.md) because Dishara can read code but not write it fluently from a blank file (recognition vs recall; autocomplete trained recognition). VS Code Copilot and inline suggestions off.
+- Lab coding policy: Phases 1 to 3 code-light (Claude writes commented plumbing; Dishara does physics, math, interpretation and short parts up to ~10 lines). Phase 4 onward code-intensive.
+- Lab project description updated (new folder path, coding policy, status).
+
+**Next**
+- Experiment answers (what Q_thth buys and costs, R trade-off, why Q_xx = 0.001 settles theta faster, why LQR works at 1 rad and the failure sweep theta0 > 1.0).
+- 6b part 2: phase1_cartpole/cartpole_lqr_mujoco.py ready (3 TODOs: LQR law, generalized force of a push on the bob Q = J_p^T f, MuJoCo state vector). Experiments A (theta0 = 0.1) and B (5 N push on the bob for 0.1 s at t = 1 s), own model vs MuJoCo.
+
+## Session 7 (2026-11-24 night)
+
+**Covered**
+- Quiz: Q1 settling time (half right: must stay in the band for good; first entry = first zero crossing). Q2 wrong and backwards: said larger R gives larger force. Correct: R penalizes F^2 in J, so larger R = less force, gentler, slower (own data: R = 1 gave 3.24 N vs 4.76 N). Q3: pole tilts +x, controller pushes cart +x to get under it (correct); at the instant of a horizontal push on the bob at theta = 0 the cart feels nothing (xddot = 0, thetaddot = Fp/(m l)), visible in B plot (x flat during the push).
+- 6b part 2 done: cartpole_lqr_mujoco.py. Same K on own model (solve_ivp, push as generalized force Q = J_p^T f: Q_x = Fp, Q_th = Fp l cos th) and MuJoCo (push via xfrc_applied on the pole body).
+  A (theta0 = 0.1): curves overlap, max error ~4e-4 m in x, ~2e-4 rad in theta (Claude's run: 4.23e-4, 1.91e-4).
+  B (5 N on bob for 0.1 s at t = 1 s): pole survives; theta +0.07 then -0.42 rad; peak F 31.22 N; max cart excursion 1.746 m; errors ~1e-3.
+- Why error ~1e-4 here vs ~1e-6 in step 5: feedback F = -K s is computed from the state at the start of each MuJoCo step and held for dt = 1 ms (zero-order hold); solve_ivp updates F continuously. Midpoint sampling is impossible because the future state is unknown. Effective delay ~dt/2 = 0.5 ms vs instability time 1/4.85 = 0.21 s and fastest closed-loop mode 1/9 = 0.11 s, so negligible here. Delay matters when comparable to the fastest time scale (real sensors/motors: tens of ms; Phase 3 hidden effect).
+
+**Mistakes to watch**
+- TODO 3 copy-paste bug: xdot read from qpos instead of qvel -> controller lost cart damping; A oscillated, B diverged (765 N, 71 m). Diagnosed by: own-model curves fine, MuJoCo wrong from t = 0 without push -> MuJoCo-side state bug, growing oscillation -> velocity/damping. Fix: np.concatenate([data.qpos, data.qvel]).
+- Q1 of the 6b questions answered with the wrong cause (sine vs impulse); the cause is the held feedback, present even in A with no push.
+- Did not understand "does 1 ms matter": compare the delay with the system's time constants.
+
+**Next**
+- Commit steps 4 to 6b (+ requirements.txt in UTF-8).
+- Experiment answers still owed: what Q_thth buys/costs, R trade-off sentence, why Q_xx = 0.001 settles theta faster, why LQR works at 1 rad + failure sweep theta0 > 1.0.
+- Create phase1_cartpole/exports/ with README.md (verified numbers from 6b) and export experiment B trajectory (CSV) for post 1.
+- Post 1: matplotlib animation of balance + push recovery (Claude writes rendering code; data from cartpole_lqr_mujoco.py).
+
+**Animation / post status**
+- Data for post 1 ready (experiment B). Animation not started.

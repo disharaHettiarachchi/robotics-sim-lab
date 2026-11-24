@@ -82,13 +82,53 @@ cartpole_sim.force = controller
 # TODO 5b: simulate with solve_ivp from s0 = [0, 0.1, 0, 0] for 6 s.
 #   Use t_eval = np.linspace(0, 6, 1201) and args=(P,), rtol and atol 1e-8.
 #   Store the time array in t and the states as S with shape (4, N) (that is sol.y).
-s0 = [0, 0.1, 0, 0]
+s0 = [0, 10, 0, 0]
 t = np.linspace(0, 6, 1201)
 S = solve_ivp(dynamics, (t[0], t[-1]), s0, args=(P,), t_eval=t, rtol=1e-8, atol=1e-8).y
 
 # TODO 5c: force history F_hist (length N): apply -K to every column of S at once.
 #   Hint: (K @ S) has shape (1, N); .ravel() flattens it.
 F_hist = (-K @ S).ravel()
+
+def run(Q, R, s0, t_end):
+    """Run the LQR controller on the nonlinear model and return Peak F, Max x, Theta settles.""" 
+    # TODO 5d: repeat the simulation with your Q, R, s0, t_end. Return the peak
+    #   force (max absolute value of F_hist), the max absolute x, and the time
+    #   when theta settles to within 0.01 rad of zero (or t_end if it never does).
+    global K
+    K, P_ric, E = ct.lqr(A, B, Q, R)
+    cartpole_sim.force = controller
+    t = np.linspace(0, t_end, int(t_end * 200) + 1)
+    S = solve_ivp(dynamics, (t[0], t[-1]), s0, args=(P,), t_eval=t, rtol=1e-8, atol=1e-8).y
+    F_hist = (-K @ S).ravel()
+    peak_F = np.max(np.abs(F_hist))
+    max_x = np.max(np.abs(S[0]))
+    tol = 0.02 * np.max(np.abs(S[1]))
+    outside = np.where(np.abs(S[1]) > tol)[0]   # indices where theta is outside the band
+    if len(outside) == 0:
+        theta_settle_time = 0.0                 # never left the band
+    elif outside[-1] == len(t) - 1:
+        theta_settle_time = t_end               # still outside at the end: never settled
+    else:
+        theta_settle_time = t[outside[-1] + 1]  # first sample after the last excursion
+    return peak_F, max_x, theta_settle_time
+
+if __name__ == "__main__":
+    t_end = 10.0
+    cases = {
+        "Q=diag(1,10,1,1), R=0.1, s0=[0,0.1,0,0]": (np.diag([1, 10, 1, 1]), np.array([[0.1]]), [0, 0.1, 0, 0]),
+        "Q=diag(1,100,1,1), R=0.1, s0=[0,0.1,0,0]": (np.diag([1, 100, 1, 1]), np.array([[0.1]]), [0, 0.1, 0, 0]),
+        "Q=diag(1,10,1,1), R=1, s0=[0,0.1,0,0]": (np.diag([1, 10, 1, 1]), np.array([[1]]), [0, 0.1, 0, 0]),
+        "Q=diag(1,10,1,1), R=0.1, s0=[0.5,0,0,0]": (np.diag([1, 10, 1, 1]), np.array([[0.1]]), [0.5, 0, 0, 0]),
+        "Q=diag(0.001,10,1,1), R=0.1, s0=[0,0.1,0,0]": (np.diag([0.001, 10, 1, 1]), np.array([[0.1]]), [0, 0.1, 0, 0]),
+        "Q=diag(1,10,1,1), R=0.1, s0=[0,0.3,0,0]": (np.diag([1, 10, 1, 1]), np.array([[0.1]]), [0, 0.3, 0, 0]),
+        "Q=diag(1,10,1,1), R=0.1, s0=[0,0.6,0,0]": (np.diag([1, 10, 1, 1]), np.array([[0.1]]), [0, 0.6, 0, 0]),
+        "Q=diag(1,10,1,1), R=0.1, s0=[0,1.0,0,0]": (np.diag([1, 10, 1, 1]), np.array([[0.1]]), [0, 1.0, 0, 0]),
+    }
+
+    for name, (Q, R, s0) in cases.items():
+        peak_F, max_x, theta_settle_time = run(Q, R, s0, t_end)
+        print(f"{name}: Peak F = {peak_F:.2f} N, Max x = {max_x:.2f} m, Theta settles at t = {theta_settle_time:.2f} s")
 
 # ---------------------------------------------------------------
 # 6. Plot (given)
